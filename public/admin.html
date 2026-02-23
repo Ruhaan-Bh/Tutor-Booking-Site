@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teacher Admin — Math Sessions</title>
+  <style>
+    body { font-family: Arial, sans-serif; color:#222; margin: 24px; }
+    h1 { margin-bottom: 12px; }
+    input, button { padding: .6rem .8rem; border:1px solid #ccc; border-radius:8px; font-size: 1rem; }
+    button { background: #007BFF; color:#fff; border:none; cursor:pointer; }
+    button:hover { background: #0056b3; }
+    .hidden { display:none; }
+    .toolbar { display:flex; gap:.5rem; margin:.75rem 0 1rem; }
+    table { border-collapse: collapse; width:100%; margin-top:.5rem; }
+    th,td { border:1px solid #ddd; padding:.6rem; text-align:left; }
+    .pill { padding:.2rem .5rem; border-radius:999px; font-size:.85rem; }
+    .pill.pending { background:#fff5cc; }
+    .pill.approved { background:#e7ffe7; }
+    .pill.rejected { background:#ffe7e7; }
+    .tab.active { background:#0056b3; color:#fff; }
+  </style>
+</head>
+<body>
+  <h1>Teacher Admin Panel</h1>
+
+  <div id="loginBox">
+    <p>Enter Password:</p>
+    <input type="password" id="adminPass" placeholder="Password" />
+    <button id="loginBtn">Login</button>
+    <span id="loginErr" style="color:red"></span>
+  </div>
+
+  <div id="panel" class="hidden">
+    <div class="toolbar">
+      <button data-tab="pending" class="tab active">Pending</button>
+      <button data-tab="approved" class="tab">Approved</button>
+      <button data-tab="rejected" class="tab">Rejected</button>
+      <button id="refresh" style="margin-left:auto">Refresh</button>
+      <a href="/" style="margin-left:.5rem">← Back</a>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Student</th><th>Email</th><th>Date</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="apptList"><tr><td colspan="6">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <script>
+    const loginBtn=document.getElementById('loginBtn');
+    const loginErr=document.getElementById('loginErr');
+    const loginBox=document.getElementById('loginBox');
+    const panel=document.getElementById('panel');
+    const apptList=document.getElementById('apptList');
+    const tabs=document.querySelectorAll('.tab');
+    let current='pending';
+
+    loginBtn.onclick=async()=>{
+      const pass=document.getElementById('adminPass').value;
+      const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pass})});
+      const d=await r.json();
+      if(!d.ok){loginErr.textContent='Invalid';return;}
+      loginBox.classList.add('hidden');panel.classList.remove('hidden');load();
+    };
+
+    tabs.forEach(t=>t.onclick=()=>{tabs.forEach(x=>x.classList.remove('active'));t.classList.add('active');current=t.dataset.tab;load();});
+    document.getElementById('refresh').onclick=load;
+
+    async function load(){
+      apptList.innerHTML='<tr><td colspan="6">Loading…</td></tr>';
+      const r=await fetch(`/api/admin/appointments?status=${current}`);
+      const d=await r.json();
+      apptList.innerHTML='';
+      if(!d.appointments.length){apptList.innerHTML='<tr><td colspan="6">None</td></tr>';return;}
+      d.appointments.forEach(a=>{
+        const tr=document.createElement('tr');
+        tr.id=`row-${a.id}`;
+        tr.innerHTML=`<td>${a.id}</td>
+          <td>${a.name}</td>
+          <td>${a.email}</td>
+          <td>${new Date(a.startUtc).toLocaleString()}</td>
+          <td><span class="pill ${a.status}">${a.status}</span></td>
+          <td>${a.status==='pending'
+            ? `<button onclick="updateStatus('${a.id}','approve')">Approve</button>
+               <button onclick="updateStatus('${a.id}','reject')">Reject</button>`
+            : '—'}</td>`;
+        apptList.appendChild(tr);
+      });
+    }
+
+    async function updateStatus(id,action){
+      document.getElementById(`row-${id}`)?.remove();
+      await fetch(`/api/admin/appointments/${id}/status`,{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})
+      });
+    }
+    window.updateStatus=updateStatus;
+  </script>
+</body>
+</html>

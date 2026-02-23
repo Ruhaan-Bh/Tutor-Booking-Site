@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Booking</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 2rem; }
+    input, button { padding: 0.5rem; margin: 0.5rem; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Manage Your Booking</h1>
+  <div id="details"></div>
+  <div id="actions"></div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+
+    async function load(){
+      const res = await fetch(`/api/manage/${id}`);
+      const data = await res.json();
+      if (!data.ok) {
+        document.getElementById("details").innerHTML = "<p>Booking not found.</p>";
+        return;
+      }
+      const a = data.appointment;
+      document.getElementById("details").innerHTML =
+        `<p><strong>Session:</strong> ${new Date(a.startUtc).toLocaleString()}</p>
+         <p><strong>Status:</strong> ${a.status}</p>`;
+
+      if (a.status === "cancelled") {
+        document.getElementById("actions").innerHTML = "<p>This session has been cancelled.</p>";
+        return;
+      }
+
+      document.getElementById("actions").innerHTML = `
+        <button onclick="cancel()">Cancel (≥24h)</button>
+        <p>or pick a new time:</p>
+        <input type="datetime-local" id="newTime" />
+        <button onclick="reschedule()">Reschedule (≥24h)</button>
+      `;
+    }
+
+    async function cancel() {
+      const r = await fetch(`/api/manage/${id}/cancel`, { method: "POST" });
+      const d = await r.json();
+      if (!d.ok) return alert(d.error || "Cancel failed");
+      alert("Booking cancelled!");
+      load();
+    }
+
+    async function reschedule() {
+      const newDateTime = document.getElementById("newTime").value;
+      if (!newDateTime) return alert("Pick a new date/time");
+      const r = await fetch(`/api/manage/${id}/reschedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newDateTime }),
+      });
+      const d = await r.json();
+      if (!d.ok) return alert(d.error || "Reschedule failed");
+      alert("Reschedule request submitted (pending approval).");
+      load();
+    }
+
+    load();
+  </script>
+</body>
+</html>

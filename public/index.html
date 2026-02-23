@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Math Session Booking</title>
+  <style>
+    body { font-family: Arial, sans-serif; background-color: #ffffff; color: #222; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1rem; }
+    h1 { margin-bottom: 1rem; font-size: 2rem; }
+    form, .role-selection { display: flex; flex-direction: column; width: 100%; max-width: 520px; gap: 1rem; }
+    input, select, button { padding: 0.75rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 0.5rem; }
+    button { background-color: #007BFF; color: white; border: none; cursor: pointer; }
+    button:hover { background-color: #0056b3; }
+    .confirmation { margin-top: 1.5rem; font-size: 1.1rem; color: green; display: none; }
+    .hidden { display: none; }
+    #slots { display: flex; flex-wrap: wrap; gap: 8px; }
+    #slots button { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; background:#fff; cursor:pointer; }
+    #slots button.selected { outline: 2px solid #007BFF; }
+    .note { font-size:.9rem; color:#555 }
+    .muted { color:#777; font-size: .95rem; }
+  </style>
+</head>
+<body>
+  <h1>Math Session Booking</h1>
+
+  <div class="role-selection" id="roleSelection">
+    <button onclick="selectRole('student')">I'm a Student</button>
+    <button onclick="selectRole('admin')">I'm the Teacher</button>
+  </div>
+
+  <form id="bookingForm" class="hidden">
+    <label for="name">Your Name</label>
+    <input type="text" id="name" name="name" required />
+
+    <label for="email">Your Email</label>
+    <input type="email" id="email" name="email" required />
+
+    <label for="day">Session Date</label>
+    <input type="date" id="day" required />
+
+    <div>
+      <label>Session Time</label>
+      <div id="slots" class="hidden" aria-live="polite"></div>
+      <div id="slotsMsg" class="muted hidden">Pick a date to see times.</div>
+    </div>
+
+    <div id="selectedWrap" class="hidden" style="padding:.5rem; border:1px dashed #bbb; border-radius:8px">
+      <b>Selected:</b> <span id="selectedText"></span>
+    </div>
+
+    <input type="hidden" id="subject" value="Math" />
+    <input type="hidden" id="timezone" />
+    <input type="hidden" id="datetimeLocalISO" />
+
+    <button type="submit">Request Booking</button>
+    <button type="button" class="back-button" onclick="goBack()">Go Back</button>
+  </form>
+
+  <div class="confirmation" id="confirmation">
+    ✅ Request received! Check your email for the manage link.
+  </div>
+
+  <div class="muted">All times shown in your timezone.</div>
+
+  <script>
+    function selectRole(role) {
+      if (role === 'student') {
+        document.getElementById('roleSelection').classList.add('hidden');
+        document.getElementById('bookingForm').classList.remove('hidden');
+      } else if (role === 'admin') {
+        window.location.href = 'admin.html';
+      }
+    }
+
+    function goBack() {
+      document.getElementById('bookingForm').classList.add('hidden');
+      document.getElementById('roleSelection').classList.remove('hidden');
+    }
+
+    const bookingForm = document.getElementById('bookingForm');
+    const submitBtn = bookingForm.querySelector('button[type="submit"]');
+    const slotsDiv = document.getElementById('slots');
+    const slotsMsg = document.getElementById('slotsMsg');
+    const selectedWrap = document.getElementById('selectedWrap');
+    const selectedText = document.getElementById('selectedText');
+
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    document.getElementById('timezone').value = tz;
+
+    const minDay = new Date();
+    minDay.setDate(minDay.getDate() + 2);
+    document.getElementById('day').min = minDay.toISOString().slice(0,10);
+
+    submitBtn.disabled = true;
+    slotsMsg.classList.remove('hidden');
+    selectedWrap.classList.add('hidden');
+
+    document.getElementById('day').addEventListener('change', async () => {
+      const day = document.getElementById('day').value;
+      document.getElementById('datetimeLocalISO').value = '';
+      selectedWrap.classList.add('hidden');
+      selectedText.textContent = '';
+      submitBtn.disabled = true;
+
+      if (!day) {
+        slotsDiv.classList.add('hidden');
+        slotsMsg.textContent = 'Pick a date to see times.';
+        slotsMsg.classList.remove('hidden');
+        return;
+      }
+
+      slotsMsg.textContent = 'Loading times...';
+      slotsMsg.classList.remove('hidden');
+      slotsDiv.classList.add('hidden');
+      slotsDiv.innerHTML = '';
+
+      try {
+        const res = await fetch(`/api/availability?day=${day}&tz=${encodeURIComponent(tz)}`);
+        const data = await res.json();
+        if (!data.available || !data.available.length) {
+          slotsMsg.textContent = 'No available times for this date. Try another day.';
+          return;
+        }
+
+        data.available.forEach(iso => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = new Date(iso).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+          btn.onclick = () => {
+            document.querySelectorAll('#slots button').forEach(x => x.classList.remove('selected'));
+            btn.classList.add('selected');
+            document.getElementById('datetimeLocalISO').value = iso;
+            selectedText.textContent = `${day} @ ${btn.textContent} (${tz})`;
+            selectedWrap.classList.remove('hidden');
+            submitBtn.disabled = false;
+          };
+          slotsDiv.appendChild(btn);
+        });
+
+        slotsMsg.classList.add('hidden');
+        slotsDiv.classList.remove('hidden');
+      } catch (e) {
+        console.error(e);
+        slotsMsg.textContent = 'Could not load times. Please try again.';
+      }
+    });
+
+    bookingForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = bookingForm.name.value.trim();
+  const email = bookingForm.email.value.trim();
+  const datetimeLocalISO = document.getElementById('datetimeLocalISO').value;
+  if (!datetimeLocalISO) return alert('Please pick a time slot');
+
+  const r = await fetch('/api/book', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ name, email, subject:'Math', datetimeLocalISO, timezone: tz })
+  });
+  const d = await r.json();
+  console.log('📡 /api/book response:', d);
+  if (d.ok) {
+    bookingForm.reset();
+    document.getElementById('day').value = '';
+    document.getElementById('datetimeLocalISO').value = '';
+    slotsDiv.innerHTML = '';
+    slotsDiv.classList.add('hidden');
+    slotsMsg.textContent = 'Pick a date to see times.';
+    slotsMsg.classList.remove('hidden');
+    selectedWrap.classList.add('hidden');
+    submitBtn.disabled = true;
+    document.getElementById('confirmation').style.display = 'block';
+    setTimeout(() => (document.getElementById('confirmation').style.display = 'none'), 3000);
+  } else {
+    alert(d.error || 'Error from server');
+  }
+});
+
+
+  </script>
+</body>
+</html>
